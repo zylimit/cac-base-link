@@ -186,8 +186,9 @@ jobs:
           if bash setup.sh --dryrun "$TMP_DRY" 2>/dev/null; then exit 1; fi
           if bash setup.sh "$TMP_DRY/CON" 2>/dev/null; then exit 1; fi
 
-          # 1. Dry-run creates nothing
-          bash setup.sh --target "$TMP_DRY" --dry-run
+          # 1. Dry-run creates nothing (verify direct ./setup.sh executable bit!)
+          ./setup.sh --help >/dev/null
+          ./setup.sh --target "$TMP_DRY" --dry-run
           test ! -e "$TMP_DRY"
 
           # 2. Construct mock .claude/ base directory

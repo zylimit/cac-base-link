@@ -476,7 +476,11 @@ export function runDoctor(rawTarget, { jsonMode = false, sourceCheck = false, ex
     for (const rel of sourceRequired) {
       const fp = path.join(root, rel);
       if (fs.existsSync(fp) && fs.statSync(fp).isFile()) {
-        ok(`源仓组件 ${rel} 存在`);
+        if (process.platform !== 'win32' && rel.endsWith('.sh') && (fs.statSync(fp).mode & 0o111) === 0) {
+          bad(`源仓组件 ${rel} 缺少可执行权限 (+x / 0755)，会导致 ./${rel} Permission denied`);
+        } else {
+          ok(`源仓组件 ${rel} 存在`);
+        }
       } else {
         bad(`源仓组件 ${rel} 缺失`);
       }

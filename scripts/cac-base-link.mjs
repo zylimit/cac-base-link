@@ -1067,6 +1067,13 @@ export function runInstall(srcRoot, targetDir, opts = {}) {
       clearLeafBeforeWrite(dstFull, migrationStamp);
       if (op.srcFull) fs.copyFileSync(op.srcFull, dstFull);
       else if (typeof op.content === 'string') fs.writeFileSync(dstFull, op.content, 'utf8');
+      if ((op.relPath.startsWith('.cac/scripts/') || op.relPath === '.cac/hooks/cc-bridge.mjs') && op.relPath.endsWith('.mjs')) {
+        try {
+          fs.chmodSync(dstFull, 0o755);
+        } catch {
+          /* ignore on Windows */
+        }
+      }
       recordWrite(op.relPath);
     }
 
@@ -1641,6 +1648,24 @@ function handlePackCheck(flags) {
     }
   }
 
+  // 6. Direct ./setup.sh executable bit & --help smoke check on POSIX
+  if (process.platform !== 'win32') {
+    const setupShPath = path.join(FRAMEWORK_ROOT, 'setup.sh');
+    const sr = spawnSync(setupShPath, ['--help'], {
+      cwd: FRAMEWORK_ROOT,
+      encoding: 'utf8',
+      shell: false,
+      windowsHide: true,
+    });
+    if (sr.error || sr.status !== 0) {
+      const errMsg = sr.error ? sr.error.message : `setup.sh --help exited ${sr.status}`;
+      bad.push({ step: 'smoke-setup.sh', code: 1, summary: errMsg });
+      steps.push({ step: 'smoke-setup.sh', ok: false, code: 1, summary: errMsg });
+    } else {
+      steps.push({ step: 'smoke-setup.sh', ok: true, code: 0 });
+    }
+  }
+
   const code = bad.length === 0 ? 0 : (bad.every((b) => b.code === 3) ? 3 : 1);
   const payload = {
     status: code === 0 ? 'ok' : (code === 3 ? 'degraded' : 'violation'),
@@ -1812,6 +1837,13 @@ function handleRelease(version, outOverride, bundleCcArg = '') {
         const dstFull = path.join(stageDir, rel);
         fs.mkdirSync(path.dirname(dstFull), { recursive: true });
         fs.copyFileSync(srcFull, dstFull);
+        if (rel.endsWith('.sh') || rel === 'scripts/cac-base-link.mjs' || (rel.startsWith('.cac/scripts/') && rel.endsWith('.mjs'))) {
+          try {
+            fs.chmodSync(dstFull, 0o755);
+          } catch {
+            /* ignore on Windows */
+          }
+        }
       }
 
       // Only when `--bundle-cc <dir>` is passed, explicitly stage clean cc-base files into `.bundled-cc-base/`
