@@ -1,0 +1,14 @@
+{
+  "name": "cc-base",
+  "minContractVersion": 1,
+  "requiredFiles": [
+    ".claude/CLAUDE.md",
+    ".claude/settings.json"
+  ],
+  "requiredDirs": [
+    ".claude/rules",
+    ".claude/skills",
+    ".claude/agents",
+    ".claude/hooks"
+  ]
+}

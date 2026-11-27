@@ -1,0 +1,25 @@
+# OS-local directory links to ../.claude/{skills,agents} (NTFS Junction on Windows / relative symlink on POSIX)
+skills
+skills/
+agents
+agents/
+
+# Local overrides, runtime state & credentials
+local/
+.runtime/
+evidence/
+feedback/
+EVOLUTION.md
+agent-memory/
+worktrees/
+settings.local.json
+.credentials.json
+.subagent-reminded
+
+# Upgrade backups & conflict sidecars
+*.bak
+*.cac-link-new
+*.cac-base-new
+*.swp
+.DS_Store
+Thumbs.db

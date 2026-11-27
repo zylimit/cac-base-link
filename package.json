@@ -1,0 +1,18 @@
+{
+  "name": "cac-base-link",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Zero-copy single-source-of-truth bridge linking cc-base (.claude/) to CodeAgent CLI (.cac/) across Windows PowerShell, WSL, Linux, and macOS.",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "test": "node .cac/tests/run-all.mjs --level high",
+    "test:all": "node .cac/tests/run-all.mjs --level all",
+    "doctor": "node .cac/scripts/doctor.mjs --source-check",
+    "manifest": "node scripts/cac-base-link.mjs manifest --write",
+    "manifest:check": "node scripts/cac-base-link.mjs manifest --check",
+    "pack-check": "node scripts/cac-base-link.mjs pack-check"
+  }
+}

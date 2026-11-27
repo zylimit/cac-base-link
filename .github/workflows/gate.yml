@@ -1,0 +1,220 @@
+name: cac-base-link gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: gate (${{ matrix.os }}, node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Configure git core.autocrlf=false before checkout
+        run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: PowerShell AST, Pure-ASCII & No-BOM verification (setup.ps1)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $full = (Resolve-Path -LiteralPath 'setup.ps1').Path
+          $bytes = [System.IO.File]::ReadAllBytes($full)
+          if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+            Write-Error "UTF-8 BOM detected in setup.ps1"
+            exit 1
+          }
+          foreach ($b in $bytes) {
+            if ($b -gt 0x7F) {
+              Write-Error "Non-ASCII byte detected in setup.ps1"
+              exit 1
+            }
+          }
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($full, [ref]$tokens, [ref]$errors)
+          if ($errors -and $errors.Count -gt 0) {
+            Write-Error "PowerShell parse error in setup.ps1: $($errors[0].Message)"
+            exit 1
+          }
+          Write-Host "PowerShell AST, Pure-ASCII & No-BOM check passed."
+
+      - name: Installer & Link-Manager unit selftests
+        run: |
+          node scripts/lib/path-guard.mjs --selftest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/lib/link-manager.mjs --selftest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/lib/settings-merge.mjs --selftest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/lib/manifest.mjs --selftest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Repository source doctor & pack-check
+        run: |
+          node .cac/scripts/doctor.mjs --source-check --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/cac-base-link.mjs pack-check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Full test suite (run-all.mjs)
+        run: |
+          if (-not (Test-Path -LiteralPath '.cac/tests/run-all.mjs')) {
+            Write-Error ".cac/tests/run-all.mjs missing -- refusing silent skip"
+            exit 1
+          }
+          node .cac/tests/run-all.mjs --level all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: End-to-end NTFS Junction install / idempotent reinstall / conflict / standalone-migration / uninstall (Windows PowerShell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("cac-link-e2e-" + [guid]::NewGuid().ToString('N'))
+          $tmpDry = Join-Path ([System.IO.Path]::GetTempPath()) ("cac-link-dry-" + [guid]::NewGuid().ToString('N'))
+          try {
+            # 0. Reject reserved Windows path segment before mkdir
+            & pwsh -NoProfile -File .\setup.ps1 (Join-Path $tmpDry 'CON')
+            if ($LASTEXITCODE -eq 0) { throw "Expected CON path rejection" }
+
+            # 1. Dry-run leaves zero files on disk
+            & pwsh -NoProfile -File .\setup.ps1 -Target $tmpDry -DryRun
+            if ($LASTEXITCODE -ne 0) { throw "setup.ps1 -DryRun failed ($LASTEXITCODE)" }
+            if (Test-Path -LiteralPath $tmpDry) { throw "DryRun must not create target directory" }
+
+            # 2. Construct mock .claude/ base directory
+            New-Item -ItemType Directory -Path (Join-Path $tmp '.claude/skills/dev-builder/refs') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $tmp '.claude/agents') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $tmp '.claude/hooks') -Force | Out-Null
+            $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+            [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/CLAUDE.md'), "[角色]`nSiteMaster constitution.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/skills/dev-builder/SKILL.md'), "# dev-builder`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/skills/dev-builder/refs/guide.md'), "precious-skill-payload`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/agents/implementer.md'), "# implementer`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/hooks/session-rules-banner.mjs'), "process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:'SessionStart',additionalContext:'banner-ok'}})+'\\n');`n", $utf8NoBom)
+
+            # 3. Install cac-base-link (real NTFS Junction!) + repeat install idempotency + downstream doctor
+            & pwsh -NoProfile -File .\setup.ps1 $tmp
+            if ($LASTEXITCODE -ne 0) { throw "setup.ps1 install failed ($LASTEXITCODE)" }
+            & pwsh -NoProfile -File .\setup.ps1 $tmp
+            if ($LASTEXITCODE -ne 0) { throw "setup.ps1 repeated install failed ($LASTEXITCODE)" }
+
+            $juncItem = Get-Item -LiteralPath (Join-Path $tmp '.cac/skills') -Force
+            if (-not ($juncItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+              throw "Expected .cac/skills to be an NTFS Junction ReparsePoint on Windows"
+            }
+            $docOut = & node (Join-Path $tmp '.cac/scripts/doctor.mjs') $tmp --json
+            if ($LASTEXITCODE -ne 0) { throw "Downstream doctor failed: $docOut" }
+
+            # 4. Conflict preservation (.cac-link-new) + -Force recovery
+            $agentsMd = Join-Path $tmp '.cac/rules/AGENTS.md'
+            Add-Content -LiteralPath $agentsMd -Value "`n# Local Custom Bridge Note`n" -Encoding utf8NoBOM
+            & pwsh -NoProfile -File .\setup.ps1 upgrade -Target $tmp
+            if ($LASTEXITCODE -ne 0) { throw "setup.ps1 upgrade failed ($LASTEXITCODE)" }
+            if (-not (Test-Path -LiteralPath ($agentsMd + '.cac-link-new'))) {
+              throw "Expected .cac/rules/AGENTS.md.cac-link-new on local modification"
+            }
+            Remove-Item -LiteralPath ($agentsMd + '.cac-link-new') -Force
+            & pwsh -NoProfile -File .\setup.ps1 upgrade -Target $tmp -Force
+            if ($LASTEXITCODE -ne 0) { throw "setup.ps1 -Force upgrade failed ($LASTEXITCODE)" }
+
+            # 5. Uninstall: verify Junction is detached and .claude/ files are 100% untouched!
+            & pwsh -NoProfile -File .\setup.ps1 -Uninstall -Target $tmp -Force
+            if ($LASTEXITCODE -ne 0) { throw "setup.ps1 -Uninstall failed ($LASTEXITCODE)" }
+            if (Test-Path -LiteralPath (Join-Path $tmp '.cac/skills')) { throw ".cac/skills Junction should be removed" }
+            $preserved = [System.IO.File]::ReadAllText((Join-Path $tmp '.claude/skills/dev-builder/refs/guide.md'))
+            if ($preserved -ne "precious-skill-payload`n") {
+              throw "CRITICAL: .claude/skills content was modified or deleted during Junction uninstall!"
+            }
+            if (-not (Test-Path -LiteralPath (Join-Path $tmp '.claude/agents/implementer.md'))) {
+              throw "CRITICAL: .claude/agents/implementer.md missing after uninstall!"
+            }
+          } finally {
+            foreach ($d in @($tmp, $tmpDry)) {
+              if (Test-Path -LiteralPath $d) {
+                Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue
+              }
+            }
+          }
+
+      - name: End-to-end relative symlink install / idempotent reinstall / conflict / standalone-migration / uninstall (POSIX setup.sh)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n setup.sh
+          bash -n setup.sh
+
+          TMP_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cac-link-e2e.XXXXXX")"
+          TMP_DRY="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cac-link-dry.XXXXXX")"
+          rm -rf "$TMP_DIR" "$TMP_DRY"
+          trap 'rm -rf "$TMP_DIR" "$TMP_DRY"' EXIT
+
+          # 0. Reject unknown flag and Windows reserved name CON
+          if bash setup.sh --dryrun "$TMP_DRY" 2>/dev/null; then exit 1; fi
+          if bash setup.sh "$TMP_DRY/CON" 2>/dev/null; then exit 1; fi
+
+          # 1. Dry-run creates nothing
+          bash setup.sh --target "$TMP_DRY" --dry-run
+          test ! -e "$TMP_DRY"
+
+          # 2. Construct mock .claude/ base directory
+          mkdir -p "$TMP_DIR/.claude/skills/dev-builder/refs" "$TMP_DIR/.claude/agents" "$TMP_DIR/.claude/hooks"
+          printf '[角色]\nSiteMaster constitution.\n' > "$TMP_DIR/.claude/CLAUDE.md"
+          printf '# dev-builder\n' > "$TMP_DIR/.claude/skills/dev-builder/SKILL.md"
+          printf 'precious-skill-payload\n' > "$TMP_DIR/.claude/skills/dev-builder/refs/guide.md"
+          printf '# implementer\n' > "$TMP_DIR/.claude/agents/implementer.md"
+          printf '%s\n' "process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:'SessionStart',additionalContext:'banner-ok'}})+'\n');" > "$TMP_DIR/.claude/hooks/session-rules-banner.mjs"
+
+          # 3. Install + repeated install idempotency + verify relative symlink + doctor
+          bash setup.sh "$TMP_DIR"
+          bash setup.sh "$TMP_DIR"
+          test -L "$TMP_DIR/.cac/skills"
+          test -L "$TMP_DIR/.cac/agents"
+          case "$(readlink "$TMP_DIR/.cac/skills")" in
+            /*) echo "::error::expected relative symlink on POSIX"; exit 1 ;;
+          esac
+          node "$TMP_DIR/.cac/scripts/doctor.mjs" "$TMP_DIR" --json
+
+          # 4. Conflict preservation (.cac-link-new) + --force recovery
+          printf '\n# Local Custom Bridge Note\n' >> "$TMP_DIR/.cac/rules/AGENTS.md"
+          bash setup.sh upgrade --target "$TMP_DIR"
+          test -f "$TMP_DIR/.cac/rules/AGENTS.md.cac-link-new"
+          grep -q 'Local Custom Bridge Note' "$TMP_DIR/.cac/rules/AGENTS.md"
+          rm -f "$TMP_DIR/.cac/rules/AGENTS.md.cac-link-new"
+          bash setup.sh upgrade --target "$TMP_DIR" --force
+          node "$TMP_DIR/.cac/scripts/doctor.mjs" "$TMP_DIR" --json
+
+          # 5. Uninstall: verify symlinks removed and .claude/ 100% untouched!
+          bash setup.sh --uninstall --target "$TMP_DIR" --force
+          test ! -e "$TMP_DIR/.cac/skills"
+          test ! -L "$TMP_DIR/.cac/skills"
+          test "$(cat "$TMP_DIR/.claude/skills/dev-builder/refs/guide.md")" = "precious-skill-payload"
+          test -f "$TMP_DIR/.claude/agents/implementer.md"

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "engine": "cac-base-link",
+  "seeded": [],
+  "files": [
+    {
+      "path": ".cac/.gitattributes",
+      "sha256": "3bcfb389ee1f46ae1d41d575e50ab30c82c6e924fbcb22dd06b5ea7c50b3bdfe",
+      "bytes": 73
+    },
+    {
+      "path": ".cac/.gitignore",
+      "sha256": "5cd462d696db9cbd0b45e4dd3b196c57d400fc28437c291f778cec58a995179c",
+      "bytes": 423
+    },
+    {
+      "path": ".cac/hooks/cc-bridge.mjs",
+      "sha256": "259a1d1501effb564a04ae50d7b72d2d293c23e1656c1b56ef2d4ff376a1a4cf",
+      "bytes": 34681
+    },
+    {
+      "path": ".cac/hooks/lib/ps-floor.mjs",
+      "sha256": "6790e9c807ab5c419c9a2aa63af7a3fbe0e33e9acabb92426abd8e4c3a4d44ea",
+      "bytes": 48856
+    },
+    {
+      "path": ".cac/hooks/lib/root.mjs",
+      "sha256": "8ae7300e423b1dae5cbe009a21eacacb65b1ed051e94fe828c45f0882460ec36",
+      "bytes": 13219
+    },
+    {
+      "path": ".cac/rules/AGENTS.md",
+      "sha256": "a81dfe6a159655cf08c9f4b6b1e4d73c259b71bc3387088ced267b5f8a75a67d",
+      "bytes": 2302
+    },
+    {
+      "path": ".cac/scripts/doctor.mjs",
+      "sha256": "43b8af3ed4ed8f1110a7f1477db193582efbb709588fb80251285fe45a68edc0",
+      "bytes": 22364
+    }
+  ]
+}
