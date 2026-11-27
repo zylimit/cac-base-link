@@ -67,12 +67,11 @@ function detachLinkOnly(absLink) {
     throw new Error(`拒绝拆除物理非链接路径：${absLink}`);
   }
   if (process.platform === 'win32') {
-    // On Windows, NTFS Junctions are directory reparse points: prefer non-recursive rmdirSync, fallback to unlinkSync.
+    // On Windows, NTFS Junctions are directory reparse points (rmdirSync); file symlinks throw ENOENT on rmdirSync and require unlinkSync.
     try {
       fs.rmdirSync(absLink);
       return;
-    } catch (e) {
-      if (e && e.code === 'ENOENT') return;
+    } catch {
       try {
         fs.unlinkSync(absLink);
         return;

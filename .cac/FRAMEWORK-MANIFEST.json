@@ -25,8 +25,8 @@
     },
     {
       "path": ".cac/hooks/lib/root.mjs",
-      "sha256": "8ae7300e423b1dae5cbe009a21eacacb65b1ed051e94fe828c45f0882460ec36",
-      "bytes": 13219
+      "sha256": "0e2ef90ad2ccd777465dcdf0e5ae186672d62fc6b5a8f1b723c54c146f2e31dd",
+      "bytes": 13171
     },
     {
       "path": ".cac/rules/AGENTS.md",
@@ -35,8 +35,8 @@
     },
     {
       "path": ".cac/scripts/doctor.mjs",
-      "sha256": "43b8af3ed4ed8f1110a7f1477db193582efbb709588fb80251285fe45a68edc0",
-      "bytes": 22364
+      "sha256": "7747b2364eb8df082a9cb0433b3b4f0e4a85f1c0f3de746fae816e3a4de563ff",
+      "bytes": 22991
     }
   ]
 }

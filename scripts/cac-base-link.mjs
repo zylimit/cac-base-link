@@ -263,8 +263,7 @@ function unlinkSymlinkOrJunctionSafe(p) {
     try {
       fs.rmdirSync(p);
       return true;
-    } catch (e) {
-      if (e && e.code === 'ENOENT') return false;
+    } catch {
       try {
         fs.unlinkSync(p);
         return true;

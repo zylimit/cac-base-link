@@ -47,6 +47,64 @@ $AllowedForwardFlags = @(
   '--write', '--check', '--leak', '--print', '--json', '--strict-syntax', '-h', '--help'
 )
 
+# Intercept raw CLI tokens before relying solely on PowerShell's native -File binder,
+# which otherwise binds unknown double-dash typos (e.g. --dryrun) to switch parameters (-DryRun).
+$selfScriptName = ([string]$PSCommandPath -split '[\\/]')[-1]
+$rawCli = [Environment]::GetCommandLineArgs()
+$rawStartIdx = -1
+$sawFileFlag = $false
+for ($idx = 0; $idx -lt $rawCli.Length; $idx++) {
+  if ($rawCli[$idx] -imatch '^[-/](?:f|file)$' -and ($idx + 1) -lt $rawCli.Length) {
+    $sawFileFlag = $true
+    $candName = ([string]$rawCli[$idx + 1] -split '[\\/]')[-1]
+    if ($candName -ieq $selfScriptName) {
+      $rawStartIdx = $idx + 2
+    }
+    break
+  }
+}
+if (-not $sawFileFlag -and $rawStartIdx -lt 0 -and $selfScriptName) {
+  for ($idx = 1; $idx -lt $rawCli.Length; $idx++) {
+    if ($rawCli[$idx] -imatch '^[-/](?:c|command|encodedcommand|ec)$') {
+      break
+    }
+    $candName = ([string]$rawCli[$idx] -split '[\\/]')[-1]
+    if ($candName -ieq $selfScriptName) {
+      $rawStartIdx = $idx + 1
+      break
+    }
+  }
+}
+if ($rawStartIdx -ge 0 -and $rawStartIdx -lt $rawCli.Length) {
+  for ($ri = $rawStartIdx; $ri -lt $rawCli.Length; $ri++) {
+    $ra = [string]$rawCli[$ri]
+    if ($ra -eq '--') {
+      break
+    }
+    if ($ra -imatch '^-(?:Target|CcBase|BundleCc|Out|HookForm)$') {
+      if (($ri + 1) -lt $rawCli.Length -and -not ([string]$rawCli[$ri + 1]).StartsWith('-')) {
+        $ri++
+      }
+      continue
+    }
+    if ($ra -cmatch '^--(target|cc-base|bundle-cc|out|hook-form)$') {
+      if (($ri + 1) -ge $rawCli.Length -or ([string]$rawCli[$ri + 1]).StartsWith('-')) {
+        Exit-Usage "option $ra requires a value"
+      }
+      $ri++
+      continue
+    }
+    if ($ra -cmatch '^--(target|cc-base|bundle-cc|out|hook-form)=$') {
+      Exit-Usage "$ra requires a non-empty value"
+    }
+    if ($ra.StartsWith('--')) {
+      if (-not ($AllowedForwardFlags -ccontains $ra) -and -not ($ra -cmatch '^--(target|cc-base|bundle-cc|out|hook-form)=.+')) {
+        Exit-Usage "unknown option: $ra"
+      }
+    }
+  }
+}
+
 $forwardArgs = New-Object System.Collections.Generic.List[string]
 $resolvedCmd = ''
 $resolvedTarget = $Target

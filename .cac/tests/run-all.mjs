@@ -286,7 +286,7 @@ function main() {
       const relevant = diag
         .replace(/\r\n/g, '\n')
         .split('\n')
-        .filter((l) => /^(?:\s*not ok\b|\s*#\s|\s*Error:|\s*AssertionError|\s*actual:|\s*expected:|\s*operator:|\s*at\s)/.test(l))
+        .filter((l) => /^(?:\s*not ok\b|\s*#\s|\s*Error:|\s*error:|\s*AssertionError|\s*failureType:|\s*code:|\s*actual:|\s*expected:|\s*operator:|\s*location:|\s*stack:|\s*at\s|\s+'?\s*at\s)/.test(l))
         .slice(0, 50);
       const dump = relevant.length > 0 ? relevant.join('\n') : diag.slice(0, 2000);
       if (dump.trim()) {

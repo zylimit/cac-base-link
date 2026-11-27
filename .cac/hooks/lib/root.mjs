@@ -310,8 +310,7 @@ function detachLinkOnly(absLink) {
     try {
       fs.rmdirSync(absLink);
       return;
-    } catch (e) {
-      if (e && e.code === 'ENOENT') return;
+    } catch {
       try {
         fs.unlinkSync(absLink);
         return;

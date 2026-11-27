@@ -100,7 +100,9 @@ jobs:
           $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("cac-link-e2e-" + [guid]::NewGuid().ToString('N'))
           $tmpDry = Join-Path ([System.IO.Path]::GetTempPath()) ("cac-link-dry-" + [guid]::NewGuid().ToString('N'))
           try {
-            # 0. Reject reserved Windows path segment before mkdir
+            # 0. Reject unknown flag and reserved Windows path segment before mkdir
+            & pwsh -NoProfile -File .\setup.ps1 --dryrun $tmpDry
+            if ($LASTEXITCODE -eq 0) { throw "Expected --dryrun rejection" }
             & pwsh -NoProfile -File .\setup.ps1 (Join-Path $tmpDry 'CON')
             if ($LASTEXITCODE -eq 0) { throw "Expected CON path rejection" }
 
@@ -110,11 +112,14 @@ jobs:
             if (Test-Path -LiteralPath $tmpDry) { throw "DryRun must not create target directory" }
 
             # 2. Construct mock .claude/ base directory
+            New-Item -ItemType Directory -Path (Join-Path $tmp '.claude/rules') -Force | Out-Null
             New-Item -ItemType Directory -Path (Join-Path $tmp '.claude/skills/dev-builder/refs') -Force | Out-Null
             New-Item -ItemType Directory -Path (Join-Path $tmp '.claude/agents') -Force | Out-Null
             New-Item -ItemType Directory -Path (Join-Path $tmp '.claude/hooks') -Force | Out-Null
             $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
             [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/CLAUDE.md'), "[角色]`nSiteMaster constitution.`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/settings.json'), "{`"hooks`":{}}`n", $utf8NoBom)
+            [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/rules/core.md'), "# Core Rules`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/skills/dev-builder/SKILL.md'), "# dev-builder`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/skills/dev-builder/refs/guide.md'), "precious-skill-payload`n", $utf8NoBom)
             [System.IO.File]::WriteAllText((Join-Path $tmp '.claude/agents/implementer.md'), "# implementer`n", $utf8NoBom)
@@ -186,8 +191,10 @@ jobs:
           test ! -e "$TMP_DRY"
 
           # 2. Construct mock .claude/ base directory
-          mkdir -p "$TMP_DIR/.claude/skills/dev-builder/refs" "$TMP_DIR/.claude/agents" "$TMP_DIR/.claude/hooks"
+          mkdir -p "$TMP_DIR/.claude/rules" "$TMP_DIR/.claude/skills/dev-builder/refs" "$TMP_DIR/.claude/agents" "$TMP_DIR/.claude/hooks"
           printf '[角色]\nSiteMaster constitution.\n' > "$TMP_DIR/.claude/CLAUDE.md"
+          printf '{"hooks":{}}\n' > "$TMP_DIR/.claude/settings.json"
+          printf '# Core Rules\n' > "$TMP_DIR/.claude/rules/core.md"
           printf '# dev-builder\n' > "$TMP_DIR/.claude/skills/dev-builder/SKILL.md"
           printf 'precious-skill-payload\n' > "$TMP_DIR/.claude/skills/dev-builder/refs/guide.md"
           printf '# implementer\n' > "$TMP_DIR/.claude/agents/implementer.md"

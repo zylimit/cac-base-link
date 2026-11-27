@@ -144,6 +144,38 @@ function extraCodeagentSearchDirs() {
   return [...new Set(out)];
 }
 
+function probeCliVersion(binPath) {
+  try {
+    let vr;
+    if (process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(binPath)) {
+      const comspec =
+        process.env.ComSpec ||
+        process.env.COMSPEC ||
+        path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe');
+      vr = spawnSync(comspec, ['/d', '/s', '/c', `""${binPath}" --version"`], {
+        shell: false,
+        windowsHide: true,
+        windowsVerbatimArguments: true,
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+    } else {
+      vr = spawnSync(binPath, ['--version'], {
+        shell: false,
+        windowsHide: true,
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+    }
+    if (vr && !vr.error && vr.stdout) {
+      return String(vr.stdout).trim().split(/\r?\n/)[0] || '';
+    }
+  } catch {
+    /* ignore */
+  }
+  return '';
+}
+
 function resolveImplicitDoctorRoot(sourceCheck) {
   const cwd = process.cwd();
   const selfRoot = path.resolve(SCRIPT_DIR, '..', '..');
@@ -563,15 +595,7 @@ export function runDoctor(rawTarget, { jsonMode = false, sourceCheck = false, ex
     const bin = whichCmd(cand, extraCliDirs);
     if (bin) {
       foundCliName = cand;
-      const vr = spawnSync(bin, ['--version'], {
-        shell: false,
-        windowsHide: true,
-        encoding: 'utf8',
-        timeout: 5000,
-      });
-      if (!vr.error && vr.stdout) {
-        foundCliVer = String(vr.stdout).trim().split(/\r?\n/)[0] || '';
-      }
+      foundCliVer = probeCliVersion(bin);
       break;
     }
   }
